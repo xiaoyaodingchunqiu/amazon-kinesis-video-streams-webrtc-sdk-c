@@ -155,6 +155,59 @@ CleanUp:
     return retStatus;
 }
 
+// get the process id by use it name: "kvs_gstreamer_s", for kill
+int getPidByName(char* task_name)
+{
+    DIR *dir = NULL;
+    struct dirent *ptr;
+    FILE *fp;
+    char filepath[BUF_SIZE] = {0};
+    char cur_task_name[BUF_SIZE] = {0};
+    char buf[BUF_SIZE] = {0};
+    int pid = 0;
+    dir = opendir("/proc");
+    if (NULL != dir) {
+        while ((ptr = readdir(dir)) != NULL) {
+            // jump . or ..
+            if ((strcmp(ptr->d_name, ".") == 0) || (strcmp(ptr->d_name, "..") == 0))
+                continue;
+            if (DT_DIR != ptr->d_type) {
+                continue;
+            }                                                                                                                       
+
+            sprintf(filepath, "/proc/%s/status", ptr->d_name);
+            fp = fopen(filepath, "r");
+            if (NULL != fp) {
+                if( fgets(buf, BUF_SIZE-1, fp)== NULL ){
+                    fclose(fp);
+                    continue;
+                }
+                sscanf(buf, "%*s %s", cur_task_name);
+
+                // get pid
+                if (!strcmp(task_name, cur_task_name)) {
+                    pid = atoi(ptr->d_name);
+                }    
+                fclose(fp);
+            }
+
+        }
+        closedir(dir);
+    }
+    // printf("pid: %d\n", pid);
+    return pid;
+}
+
+// kill kvs_gstreamer_s for allow this process to use the camera
+void doKill() {
+    int pid = getPidByName(KILL_PROCCESS_NAME);
+    int ret = kill(pid, SIGINT);
+    if(ret < 0) {
+        printf("SIGINT do not end the kvs_gstreamer_sample process, use SIGKILL: errno(%d)\\n", errno);
+        kill(pid, SIGKILL);
+    }
+}
+
 PVOID mediaSenderRoutine(PVOID customData)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -170,6 +223,7 @@ PVOID mediaSenderRoutine(PVOID customData)
     CHK(!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag), retStatus);
 
     if (pSampleConfiguration->videoSource != NULL) {
+        doKill();
         THREAD_CREATE(&videoSenderTid, pSampleConfiguration->videoSource, (PVOID) pSampleConfiguration);
     }
 
@@ -599,7 +653,7 @@ VOID sampleFrameHandler(UINT64 customData, PFrame pFrame)
     if (pSampleStreamingSession->firstFrame) {
         pSampleStreamingSession->firstFrame = FALSE;
         pSampleStreamingSession->startUpLatency = (GETTIME() - pSampleStreamingSession->offerReceiveTime) / HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
-        printf("Start up latency from offer to first frame: %" PRIu64 "ms\n", pSampleStreamingSession->startUpLatency);
+        printf("Start up latency from offer to first frame: %ld" PRIu64 "ms\n", pSampleStreamingSession->startUpLatency);
     }
 }
 
@@ -1134,11 +1188,13 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->interrupted)) {
         // Keep the main set of operations interlocked until cvar wait which would atomically unlock
+        //printf("[test]zhangqijun Keep the main set of operations interlocked until cvar wait which would atomically unlock \n");
         MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
         locked = TRUE;
 
         // scan and cleanup terminated streaming session
         for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
+        //    printf("[test]zhangqijun scan and cleanup terminated streaming session i = %d\n", i + 1);
             if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->sampleStreamingSessionList[i]->terminateFlag)) {
                 pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
 
@@ -1163,11 +1219,14 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         }
 
         // Check if we need to re-create the signaling client on-the-fly
+        // We will force re-create the signaling client on the following errors
+        // TATUS_SIGNALING_ICE_CONFIG_REFRESH_FAILED || STATUS_SIGNALING_RECONNECT_FAILED
         if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient)) {
             retStatus = signalingClientFetchSync(pSampleConfiguration->signalingClientHandle);
             if (STATUS_SUCCEEDED(retStatus)) {
                 // Re-set the variable again
                 ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
+            //    printf("[test]zhangqijun Re-set the variable again \n");
             } else if (signalingCallFailed(retStatus)) {
                 printf("[KVS Common] recreating Signaling Client\n");
                 freeSignalingClient(&pSampleConfiguration->signalingClientHandle);
@@ -1180,18 +1239,31 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         // Check the signaling client state and connect if needed
         if (IS_VALID_SIGNALING_CLIENT_HANDLE(pSampleConfiguration->signalingClientHandle)) {
             CHK_STATUS(signalingClientGetCurrentState(pSampleConfiguration->signalingClientHandle, &signalingClientState));
+        //    printf("[test]zhangqijun Check the signaling client state and connect if needed \n");
             if (signalingClientState == SIGNALING_CLIENT_STATE_READY) {
                 UNUSED_PARAM(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
             }
         }
 
         // Check if any lingering pending message queues
+        // printf("[test]zhangqijun Check if any lingering pending message queues \n");
         CHK_STATUS(removeExpiredMessageQueues(pSampleConfiguration->pPendingSignalingMessageForRemoteClient));
 
         // periodically wake up and clean up terminated streaming session
         CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, SAMPLE_SESSION_CLEANUP_WAIT_PERIOD);
+        
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
         locked = FALSE;
+        if(pSampleConfiguration->streamingSessionCount < 1) {
+            printf("[test] should reboot\n");
+            char* execArgv[] = {SELF_PROCESS_NAME, SELF_PIPE_NAME, 0};
+            int ret = 1;
+            ret = execv("/proc/self/exe", execArgv);
+            if(ret < 0) {
+                printf("reboot fail, errno = %d\n", errno);
+            }
+        }
+
     }
 
 CleanUp:
@@ -1240,6 +1312,7 @@ CleanUp:
 
 STATUS signalingMessageReceived(UINT64 customData, PReceivedSignalingMessage pReceivedSignalingMessage)
 {
+    //printf("[test]zhangqijun signalingMessageReceived func in once\n");
     STATUS retStatus = STATUS_SUCCESS;
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) customData;
     BOOL peerConnectionFound = FALSE, locked = FALSE, startStats = FALSE;
@@ -1264,6 +1337,7 @@ STATUS signalingMessageReceived(UINT64 customData, PReceivedSignalingMessage pRe
 
     switch (pReceivedSignalingMessage->signalingMessage.messageType) {
         case SIGNALING_MESSAGE_TYPE_OFFER:
+            // printf("[test]zhangqijun offer\n");
             // Check if we already have an ongoing master session with the same peer
             CHK_ERR(!peerConnectionFound, STATUS_INVALID_OPERATION, "Peer connection %s is in progress",
                     pReceivedSignalingMessage->signalingMessage.peerClientId);
@@ -1315,6 +1389,7 @@ STATUS signalingMessageReceived(UINT64 customData, PReceivedSignalingMessage pRe
              * Lastly check if there is any ice candidate messages queued in pPendingSignalingMessageForRemoteClient.
              * If so then submit all of them.
              */
+            // printf("[test]zhangqijun answer\n");
             pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[0];
             CHK_STATUS(handleAnswer(pSampleConfiguration, pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
             CHK_STATUS(hashTablePut(pSampleConfiguration->pRtcPeerConnectionForRemoteClient, clientIdHash, (UINT64) pSampleStreamingSession));
@@ -1335,6 +1410,7 @@ STATUS signalingMessageReceived(UINT64 customData, PReceivedSignalingMessage pRe
              * if peer connection hasn't been created, create an queue to store the ice candidate message. Otherwise
              * submit the signaling message into the corresponding streaming session.
              */
+            // printf("[test]zhangqijun ice candidate\n");
             if (!peerConnectionFound) {
                 CHK_STATUS(getPendingMessageQueueForHash(pSampleConfiguration->pPendingSignalingMessageForRemoteClient, clientIdHash, FALSE,
                                                          &pPendingMessageQueue));
@@ -1358,6 +1434,7 @@ STATUS signalingMessageReceived(UINT64 customData, PReceivedSignalingMessage pRe
             break;
 
         default:
+            // printf("[test]zhangqijun default\n");
             DLOGD("Unhandled signaling message type %u", pReceivedSignalingMessage->signalingMessage.messageType);
             break;
     }

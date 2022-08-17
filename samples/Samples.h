@@ -12,11 +12,15 @@ extern "C" {
 
 #include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
 
+#define BUF_SIZE                                 128
 #define NUMBER_OF_H264_FRAME_FILES               1500
 #define NUMBER_OF_OPUS_FRAME_FILES               618
 #define DEFAULT_FPS_VALUE                        25
 #define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 10
 
+#define SELF_PROCESS_NAME       "./samples/kvsWebrtcClientMasterGstSample"
+#define KILL_PROCCESS_NAME      "kvs_gstreamer_s"
+#define SELF_PIPE_NAME          "0801-hytest-webrtc-pipeline"
 #define SAMPLE_MASTER_CLIENT_ID "ProducerMaster"
 #define SAMPLE_VIEWER_CLIENT_ID "ConsumerViewer"
 #define SAMPLE_CHANNEL_NAME     (PCHAR) "ScaryTestChannel"

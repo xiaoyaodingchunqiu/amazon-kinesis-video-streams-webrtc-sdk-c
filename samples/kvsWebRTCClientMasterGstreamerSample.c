@@ -140,19 +140,28 @@ PVOID sendGstreamerAudioVideo(PVOID args)
      * videotestsrc is-live=TRUE ! video/x-raw,width=1280,height=720,framerate=30/1 !
      * vp8enc error-resilient=partitions keyframe-max-dist=10 auto-alt-ref=true cpu-used=5 deadline=1 !
      * appsink sync=TRUE emit-signals=TRUE name=appsink-video
+     * 
+     * command line
+     * gst-launch-1.0 -v v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 !
+     * x264enc bframes=0 key-int-max=45 bitrate=500 tune=zerolatency ! video/x-h264,stream-format=avc,alignment=au ! 
+     * kvssink stream-name=ExampleStream storage-size=128 access-key="AKIAZD6AP7XJXVABVBUE" 
+     * secret-key="xvxcCeQBrG9ktn9FZUeRFjoGdqCb4bDhDY14Li7z" aws-region="us-east-1"
      */
 
     switch (pSampleConfiguration->mediaType) {
         case SAMPLE_STREAMING_VIDEO_ONLY:
             if (pSampleConfiguration->useTestSrc) {
+                printf("[test]only video & useTestSrc\n");
                 pipeline = gst_parse_launch(
                     "videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! "
                     "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
                     &error);
             } else {
+                printf("[test]only video & else3\n");
                 pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
+                 //    "v4l2src device=/dev/video3 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! x264enc bframes=0 key-int-max=45 bitrate=500 tune=zerolatency ! video/x-h264,stream-format=avc,alignment=au! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! "
                     "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
                     &error);
@@ -161,6 +170,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
         case SAMPLE_STREAMING_AUDIO_VIDEO:
             if (pSampleConfiguration->useTestSrc) {
+                printf("[test]audio_video & useTestSrc\n");
                 pipeline = gst_parse_launch("videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! "
                                             "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
                                             "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE "
@@ -169,6 +179,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                                             "audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
                                             &error);
             } else {
+                printf("[test]audio_ideo & else\n");
                 pipeline =
                     gst_parse_launch("autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
                                      "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
@@ -352,6 +363,7 @@ INT32 main(INT32 argc, CHAR* argv[])
     pChannelName = argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME;
 #endif
 
+    // 创建示例的配置，获取环境变量等初始化设置，默认信道地址为美西2,但是自己的信道地区是美东1,所以需要加上export AWS_DEFAULT_REGION=us-east-1
     retStatus = createSampleConfiguration(pChannelName, SIGNALING_CHANNEL_ROLE_TYPE_MASTER, TRUE, TRUE, &pSampleConfiguration);
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS GStreamer Master] createSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
@@ -441,6 +453,10 @@ INT32 main(INT32 argc, CHAR* argv[])
         printf("[KVS GStreamer Master] signalingClientConnectSync(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
+
+    printf("boot kvs_gstreamer_s\n");
+    system("./kvs_gstreamer_sample 0803forgetpic");
+
     printf("[KVS GStreamer Master] Signaling client connection to socket established\n");
 
     printf("[KVS Gstreamer Master] Beginning streaming...check the stream over channel %s\n", pChannelName);
