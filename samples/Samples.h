@@ -18,7 +18,7 @@ extern "C" {
 #define DEFAULT_FPS_VALUE                        25
 #define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 10
 
-#define SELF_PROCESS_NAME       "./samples/kvsWebrtcClientMasterGstSample"
+#define SELF_PROCESS_NAME       "./kvsWebrtcClientMasterGstSample"
 #define KILL_PROCCESS_NAME      "kvs_gstreamer_s"
 #define SELF_PIPE_NAME          "0801-hytest-webrtc-pipeline"
 #define SAMPLE_MASTER_CLIENT_ID "ProducerMaster"

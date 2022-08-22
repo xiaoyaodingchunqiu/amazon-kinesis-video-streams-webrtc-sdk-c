@@ -3,6 +3,8 @@
 #include <gst/app/gstappsink.h>
 
 extern PSampleConfiguration gSampleConfiguration;
+extern PCHAR hyPipeName;
+extern BOOL gstTip;
 
 // #define VERBOSE
 
@@ -346,6 +348,7 @@ CleanUp:
 
 INT32 main(INT32 argc, CHAR* argv[])
 {
+    gstTip = TRUE;
     STATUS retStatus = STATUS_SUCCESS;
     PSampleConfiguration pSampleConfiguration = NULL;
     PCHAR pChannelName;
@@ -362,7 +365,8 @@ INT32 main(INT32 argc, CHAR* argv[])
 #else
     pChannelName = argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME;
 #endif
-
+    
+    hyPipeName = pChannelName;
     // 创建示例的配置，获取环境变量等初始化设置，默认信道地址为美西2,但是自己的信道地区是美东1,所以需要加上export AWS_DEFAULT_REGION=us-east-1
     retStatus = createSampleConfiguration(pChannelName, SIGNALING_CHANNEL_ROLE_TYPE_MASTER, TRUE, TRUE, &pSampleConfiguration);
     if (retStatus != STATUS_SUCCESS) {
@@ -454,8 +458,10 @@ INT32 main(INT32 argc, CHAR* argv[])
         goto CleanUp;
     }
 
-    printf("boot kvs_gstreamer_s\n");
-    system("./kvs_gstreamer_sample 0803forgetpic");
+    CHAR cmdName[256] = "./kvs_gstreamer_sample hygetpic";
+    STRCAT(cmdName, pChannelName);
+    printf("boot %s\n", cmdName);
+    system(cmdName);
 
     printf("[KVS GStreamer Master] Signaling client connection to socket established\n");
 

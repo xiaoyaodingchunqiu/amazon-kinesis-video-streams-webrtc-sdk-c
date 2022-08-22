@@ -1,7 +1,10 @@
 #define LOG_CLASS "WebRtcSamples"
 #include "Samples.h"
 
+
 PSampleConfiguration gSampleConfiguration = NULL;
+PCHAR hyPipeName = NULL;
+BOOL gstTip = FALSE;
 
 VOID sigintHandler(INT32 sigNum)
 {
@@ -1254,9 +1257,9 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
         locked = FALSE;
-        if(pSampleConfiguration->streamingSessionCount < 1) {
+        if(pSampleConfiguration->streamingSessionCount < 1 && gstTip) {
             printf("[test] should reboot\n");
-            char* execArgv[] = {SELF_PROCESS_NAME, SELF_PIPE_NAME, 0};
+            char* execArgv[] = {SELF_PROCESS_NAME, hyPipeName, 0};
             int ret = 1;
             ret = execv("/proc/self/exe", execArgv);
             if(ret < 0) {
