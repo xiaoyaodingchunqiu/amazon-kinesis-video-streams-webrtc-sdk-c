@@ -1258,13 +1258,15 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
         locked = FALSE;
         if(pSampleConfiguration->streamingSessionCount < 1 && gstTip) {
-            printf("[test] should reboot\n");
+	    exit(1);
+            /* printf("[test] should reboot\n");
             char* execArgv[] = {SELF_PROCESS_NAME, hyPipeName, 0};
             int ret = 1;
             ret = execv("/proc/self/exe", execArgv);
             if(ret < 0) {
                 printf("reboot fail, errno = %d\n", errno);
             }
+	    */
         }
 
     }
